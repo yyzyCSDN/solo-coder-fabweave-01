@@ -15,6 +15,7 @@ from fabweave.energy.demand import demand_violations
 from fabweave.genealogy.carrier import GenealogyGraph
 from fabweave.holds.release import HoldState, release_decision
 from fabweave.lot.merge import Lot, merge_lots
+from fabweave.lot.split import SplitResult, split_lots
 from fabweave.maintenance.window import MaintenancePolicy, assignment_decision
 from fabweave.metrology.sampling import Wafer, deterministic_sample
 from fabweave.queue_time.enforcer import QueueLimit, queue_time_decision
@@ -230,6 +231,27 @@ def merge_and_commit(request_id: str, lots: list[Lot], ledger: CommitLedger, ord
     merged = merge_lots(request_id, lots)
     allocation = ledger.allocate(request_id, order_id, merged.quantity)
     return merged, allocation
+
+
+def split_for_processing(
+    request_id: str,
+    parent: Lot,
+    reticle_id: str,
+    available: dict[str, int],
+    compatible: frozenset[tuple[str, str]],
+    min_lot_size: int,
+) -> tuple[SplitResult, GenealogyGraph]:
+    """Split a WIP lot across idle parallel machines and record the genealogy.
+
+    The split is validated before any sub-lot is materialized, so a rejected
+    request leaves no partial sub-lots behind.  The returned graph captures the
+    parent-child relationship for downstream genealogy traversal.
+    """
+    result = split_lots(request_id, parent, reticle_id, available, compatible, min_lot_size)
+    parent_of = dict(result.parent_of)
+    parent_of[parent.lot_id] = None
+    graph = GenealogyGraph(parent_of)
+    return result, graph
 
 
 def dedicated_qualification(
